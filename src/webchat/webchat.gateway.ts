@@ -13,13 +13,17 @@ import {
   WebSocketGateway,
   WebSocketServer
 } from "@nestjs/websockets";
+import { Console } from "console";
 import { Server } from "socket.io";
-// import { TranslationService } from "src/translation/translation.service";
 import { WebchatMockService, ChatMessage } from "src/webchat-mock/webchat-mock.service";
+
+type ChatState = 'INITIAL' | 'UNAUTHORIZED' | 'PENDING_AUTH' | 'IN_PROGRESS' | 'FINISH_INTEND' | 'FINESHED';
 
 interface ClientInfo {
   name: string;
-  language ?: string;
+  language?: string;
+  email?: string;
+  state: ChatState;
 }
 
 @WebSocketGateway({ cors: { origin: 'http://localhost:4200', credentials: true } })
@@ -41,6 +45,8 @@ export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGat
 
   handleConnection(client: any, ...args: any[]) {
     this.logger.log(`Cliente conectado: ${client.id}`);
+    // Ao conectar, definimos o estado inicial
+    this.clientInfo.set(client.id, { name: '', state: 'INITIAL' });
   }
 
   handleDisconnect(client: any) {
@@ -56,39 +62,19 @@ export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGat
 
   @SubscribeMessage("authenticate")
   handleAuthentication(client: any, loginData: any) {
-    const clientData = this.clientInfo.get(client.id);
-    try {
-      if (loginData && loginData.name) {
-        const userName = loginData.name;
-        this.clientInfo.set(client.id, { name: userName });
-
-        // Envia saudação personalizada
-        const greeting = this.webchatMockService.getGreetingMessage(userName, clientData?.language);
-        this.emitMessage(client, "message", greeting);
-
-        // Envia mensagem de boas-vindas multilíngue com botões
-        const welcome = this.webchatMockService.getWelcomeMessage(clientData?.language);
-        this.emitMessage(client, "message", welcome);
-      } else {
-        // Mensagem default para usuário não autenticado
-        const defaultMsg = this.webchatMockService.getDefaultMessage(clientData?.language);
-        this.emitMessage(client, "message", defaultMsg);
+    console.log("AUTHENTICATE CALLED");
+    // Armazenamos os dados de autenticação recebidos
+    const clientData = this.clientInfo.get(client.id) || { name: '', state: 'INITIAL' };
+    if (loginData && loginData.name) {
+      clientData.name = loginData.name;
+      if (loginData.email) {
+        clientData.email = loginData.email;
       }
-    } catch (error) {
-      this.logger.error(`Erro na autenticação do cliente ${client.id}: ${error}`);
     }
-  }
-
-  @SubscribeMessage("linkClicked")
-  handleLinkClicked(client: any) {
-    const userName = "Positivo";
-    this.clientInfo.set(client.id, { name: userName });
-    const clientData = this.clientInfo.get(client.id);
-
-    const greeting = this.webchatMockService.getGreetingMessage(userName, clientData?.language);
-    this.emitMessage(client, "message", greeting);
-
-    const welcome = this.webchatMockService.getWelcomeMessage(clientData?.language);
+    // Mantemos o estado INITIAL e enviamos a mensagem de escolha de idioma
+    clientData.state = 'INITIAL';
+    this.clientInfo.set(client.id, clientData);
+    const welcome = this.webchatMockService.getWelcomeMessage(undefined); // mensagem multilíngue com botões de idioma
     this.emitMessage(client, "message", welcome);
   }
 
@@ -99,43 +85,89 @@ export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     if (!clientData) return;
 
     clientData.language = language;
-    const initialMsg = this.webchatMockService.getInitialSubjectMessage(clientData.name, clientData.language);
-    this.emitMessage(client, "message", initialMsg);
+    // Após escolher o idioma, definimos o estado como UNAUTHORIZED
+    clientData.state = 'UNAUTHORIZED';
+    this.clientInfo.set(client.id, clientData);
+
+    // Verifica se o usuário já enviou o email na autenticação
+    if (clientData.email) {
+      // Usuário autenticado: envia saudação e mensagem de assunto
+      clientData.state = 'IN_PROGRESS';
+      this.clientInfo.set(client.id, clientData);
+      const greeting = this.webchatMockService.getGreetingMessage(clientData.name, clientData.language);
+      this.emitMessage(client, "message", greeting);
+      const subject = this.webchatMockService.getInitialSubjectMessage(clientData.name, clientData.language);
+      this.emitMessage(client, "message", subject);
+    } else {
+      // Usuário não autenticado: solicita autenticação
+      clientData.state = 'PENDING_AUTH';
+      this.clientInfo.set(client.id, clientData);
+      const authPrompt = this.webchatMockService.getAuthPromptMessage(clientData.language);
+      this.emitMessage(client, "message", authPrompt);
+    }
   }
 
   @SubscribeMessage("chooseOption")
   handleChooseOption(client: any, payload: any){
+    console.log("CHOOSE OPTION")
     const option = payload?.option;
     const clientData = this.clientInfo.get(client.id);
     if (!clientData) return;
 
-    let optionMsg: ChatMessage;
-    switch (option) {
-      case "1":
-        optionMsg = this.webchatMockService.getHumanSupportMessage(clientData.language);
-        break;
-      case "2":
-        optionMsg = this.webchatMockService.getDocumentAnalysisMessage(clientData.name, clientData.language);
-        break;
-      case "3":
-        optionMsg = this.webchatMockService.getTicketInquiryMessage(clientData.name, clientData.language);
-        break;
-      default: {
-        const lastMsg = this.lastBotMessage.get(client.id);
-        if (lastMsg) {
-          this.emitMessage(client, "message", lastMsg);
+    // Se estiver no estado de PENDING_AUTH e o usuário clicar no botão de autenticação (valor "auth")
+    if (clientData.state === 'PENDING_AUTH' && option === 'auth') {
+      // Preenche os dados de autenticação com valores fixos
+      clientData.name = "Posiflow";
+      clientData.email = "posiflow@positivomais.com";
+      clientData.state = 'IN_PROGRESS';
+      this.clientInfo.set(client.id, clientData);
+      const greeting = this.webchatMockService.getGreetingMessage(clientData.name, clientData.language);
+      this.emitMessage(client, "message", greeting);
+      const subject = this.webchatMockService.getInitialSubjectMessage(clientData.name, clientData.language);
+      this.emitMessage(client, "message", subject);
+      return;
+    }
+    
+    // Se estiver em IN_PROGRESS, trata as opções de assunto
+    if (clientData.state === 'IN_PROGRESS') {
+      let optionMsg: ChatMessage;
+      switch (option) {
+        case "1":
+          optionMsg = this.webchatMockService.getHumanSupportMessage(clientData.language);
+          break;
+        case "2":
+          optionMsg = this.webchatMockService.getDocumentAnalysisMessage(clientData.name, clientData.language);
+          break;
+        case "3":
+          optionMsg = this.webchatMockService.getTicketInquiryMessage(clientData.name, clientData.language);
+          break;
+        default: {
+          const lastMsg = this.lastBotMessage.get(client.id);
+          if (lastMsg) {
+            this.emitMessage(client, "message", lastMsg);
+          }
+          return;
         }
-        return;
+      }
+      this.emitMessage(client, "message", optionMsg);
+    } else {
+      // Se não estiver em um estado esperado, reenvia a última mensagem
+      const lastMsg = this.lastBotMessage.get(client.id);
+      if (lastMsg) {
+        this.emitMessage(client, "message", lastMsg);
       }
     }
-    this.emitMessage(client, "message", optionMsg);
   }
 
   @SubscribeMessage("finishIntendRequest")
   handleFinishIntendRequest(client: any) {
     const clientData = this.clientInfo.get(client.id);
-    const name = clientData ? clientData.name : "";
-    const confirmMsg = this.webchatMockService.getFinishIntendMessage(name, clientData?.language);
+    if (!clientData) return;
+    // Atualiza o estado para tentativa de finalização
+    clientData.state = 'FINISH_INTEND';
+    this.clientInfo.set(client.id, clientData);
+    const name = clientData.name || "";
+    const confirmMsg = this.webchatMockService.getFinishIntendMessage(name, clientData.language);
     this.emitMessage(client, "finishIntendResponse", confirmMsg);
   }
 
@@ -145,11 +177,24 @@ export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     if (!clientData) return;
 
     const option = payload?.option;
-    const confirmResponse = this.webchatMockService.getFinishConfirmationMessage(option, clientData.name, clientData.language);
-    console.log("confirm response", confirmResponse);
-    if (confirmResponse) {
-      this.emitMessage(client, "finishIntendResponse", confirmResponse);
+    if (option === '1') {
+      // Usuário confirmou o encerramento
+      clientData.state = 'FINESHED';
+      this.clientInfo.set(client.id, clientData);
+      const confirmResponse = this.webchatMockService.getFinishConfirmationMessage(option, clientData.name, clientData.language);
+      if (confirmResponse) {
+        this.emitMessage(client, "finishIntendResponse", confirmResponse);
+      }
+    } else if (option === '2') {
+      // Usuário cancelou a finalização, retorna ao fluxo normal (IN_PROGRESS)
+      clientData.state = 'IN_PROGRESS';
+      this.clientInfo.set(client.id, clientData);
+      const lastMsg = this.lastBotMessage.get(client.id);
+      if (lastMsg) {
+        this.emitMessage(client, "finishIntendResponse", lastMsg);
+      }
     } else {
+      // Opção inesperada: reenvia a última mensagem
       const lastMsg = this.lastBotMessage.get(client.id);
       if (lastMsg) {
         this.emitMessage(client, "finishIntendResponse", lastMsg);
@@ -175,17 +220,33 @@ export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGat
 
   @SubscribeMessage("sendMessage")
   handleSendMessage(client: any, message: any) {
-    this.logger.log(`Mensagem recebida de ${client.id}: ${JSON.stringify(message)}`);
-    const clientData = this.clientInfo.get(client.id);;
+    console.log("SEND MESSAGE");
+    const clientData = this.clientInfo.get(client.id);
+    if (!clientData) return;
+    
+    // Se a mensagem enviada tiver status FINISH_INTEND, iniciamos o fluxo de finalização
+    if (message.status === 'FINISH_INTEND') {
+      clientData.state = 'FINISH_INTEND';
+      this.clientInfo.set(client.id, clientData);
+      const name = clientData.name || "";
+      const confirmMsg = this.webchatMockService.getFinishIntendMessage(name, clientData.language);
+      this.emitMessage(client, "finishIntendResponse", confirmMsg);
+      return;
+    }
 
-    const responseDefault: ChatMessage = {
-      text: this.webchatMockService.getAutomaticResponse(clientData?.language),
-      sender: "bot",
-      status: "PROGRESS",
-      timestamp: new Date(),
-    };
-
-    // Envia a resposta apenas para o cliente que disparou o evento
-    this.emitMessage(client, "message", responseDefault);
+    // Se estivermos em IN_PROGRESS e o input não for esperado, reenviamos a última mensagem
+    if (clientData.state === 'IN_PROGRESS') {
+      const lastMsg = this.lastBotMessage.get(client.id);
+      if (lastMsg) {
+        this.emitMessage(client, "message", lastMsg);
+      }
+    } else {
+      // Para outros casos, apenas registre e reenvie a última mensagem
+      this.logger.log(`Mensagem recebida de ${client.id}: ${JSON.stringify(message)}`);
+      const lastMsg = this.lastBotMessage.get(client.id);
+      if (lastMsg) {
+        this.emitMessage(client, "message", lastMsg);
+      }
+    }
   }
 }

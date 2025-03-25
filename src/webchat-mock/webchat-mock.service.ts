@@ -10,6 +10,7 @@ export interface ChatMessage {
   timestamp: Date;
   type?: string;
   buttons?: { label: string; value: string; }[];
+  context?: string; // Propriedade adicionada para identificar o contexto dos botões
 }
 
 @Injectable()
@@ -73,7 +74,8 @@ export class WebchatMockService {
       status: 'PROGRESS',
       timestamp: new Date(),
       type: 'buttons',
-      buttons: this.getLanguageButtons()
+      buttons: this.getLanguageButtons(),
+      context: 'language' // Define o contexto dos botões como "language"
     };
   }
 
@@ -87,10 +89,7 @@ export class WebchatMockService {
     );
   }
   
-  
-
   private getLanguageButtons(): { label: string; value: string; }[] {
-    // Os rótulos permanecem fixos conforme o idioma representado pelo botão
     return [
       { label: this.getButtonLabel('Portuguese'), value: 'pt' },
       { label: this.getButtonLabel('Spanish'), value: 'es' },
@@ -108,8 +107,43 @@ export class WebchatMockService {
       Romanian: 'Română',
       French: 'Français',
     };
-  
     return labels[base];
+  }
+
+  // Método para solicitar autenticação
+  getAuthPromptMessage(lang: string | undefined): ChatMessage {
+    let text: string;
+    let buttonLabel: string;
+    switch(lang) {
+      case 'es':
+        text = "Por favor, autentícate para continuar.";
+        buttonLabel = "Autenticar";
+        break;
+      case 'en':
+        text = "Please authenticate to continue.";
+        buttonLabel = "Authenticate";
+        break;
+      case 'ro':
+        text = "Te rog autentifică-te pentru a continua.";
+        buttonLabel = "Autentificare";
+        break;
+      case 'fr':
+        text = "Veuillez vous authentifier pour continuer.";
+        buttonLabel = "S'authentifier";
+        break;
+      default:
+        text = "Por favor, autentique-se para continuar.";
+        buttonLabel = "Autenticar";
+    }
+    return {
+      text,
+      sender: 'bot',
+      status: 'PROGRESS',
+      timestamp: new Date(),
+      type: 'buttons',
+      buttons: [{ label: buttonLabel, value: 'auth' }],
+      context: 'auth' // Define o contexto dos botões como "auth"
+    };
   }
 
   // Mensagem com escolha do assunto
@@ -120,7 +154,8 @@ export class WebchatMockService {
       status: 'PROGRESS',
       timestamp: new Date(),
       type: 'buttons',
-      buttons: this.getSubjectButtons(userName, lang)
+      buttons: this.getSubjectButtons(userName, lang),
+      context: 'subject' // Define o contexto dos botões como "subject"
     };
   }
 
@@ -174,7 +209,6 @@ export class WebchatMockService {
     return labels[base][lang] || labels[base].pt;
   }
 
-  // Mensagem de atendimento humano
   getHumanSupportMessage(lang: string | undefined): ChatMessage {
     return {
       text: this.getHumanSupportMessageLanguage(lang),
@@ -237,15 +271,15 @@ export class WebchatMockService {
   private getTicketInquiryMessageLanguage(userName: string, lang: string | undefined): string {
     switch(lang) {
       case 'es':
-        return `${userName}, NO TIENES TICKETS ABIERTOS EN ESTE MOMENTO. ¿TE AYUDO EN ALGO MÁS? 1 - SÍ, 2 - NO.`;
+        return `${userName}, no tienes tickets abiertos en este momento. Te ayudo en algo más?`;
       case 'en':
-        return `${userName}, YOU DO NOT HAVE ANY OPEN TICKETS AT THE MOMENT. CAN I HELP YOU WITH SOMETHING ELSE? 1 - YES, 2 - NO.`;
+        return `${userName}, you do not have any open tickets at the moment. Can I help you with something else?`;
       case 'ro':
-        return `${userName}, NU AI NICIUN TICHET DESCHIS ÎN MOMENT. POT SĂ TE AJUT CU ALTCEVA? 1 - DA, 2 - NU.`;
+        return `${userName}, nu ai niciun tichet deschis în moment. Pot să te ajut cu altceva?`;
       case 'fr':
-        return `${userName}, VOUS N'AVEZ AUCUN TICKET OUVERT POUR LE MOMENT. PUIS-JE VOUS AIDER D'UNE AUTRE MANIÈRE ? 1 - OUI, 2 - NON.`;
+        return `${userName}, vous n'avez aucun ticket ouvert pour le moment. Puis-je vous aider d'une autre manière ?`;
       default:
-        return `${userName}, VOCÊ NÃO POSSUI CHAMADOS EM ABERTO NO MOMENTO. TE AJUDO EM ALGO MAIS? 1 - SIM, 2 - NÃO.`;
+        return `${userName}, você não possui chamados em aberto no momento. Te ajudo em algo mais?`;
     }
   }
 
@@ -257,22 +291,23 @@ export class WebchatMockService {
       status: 'FINESHED_INTENDED',
       timestamp: new Date(),
       type: 'buttons',
-      buttons: this.getFinishIntendButtons(lang)
+      buttons: this.getFinishIntendButtons(lang),
+      context: 'finish' // Define o contexto dos botões como "finish"
     };
   }
 
   private getFinishIntendMessageLanguage(userName: string, lang: string | undefined): string {
     switch(lang) {
       case 'es':
-        return `${userName}, ¿REALMENTE DESEAS TERMINAR EL CHAT?`;
+        return `¿REALMENTE DESEAS TERMINAR EL CHAT?`;
       case 'en':
-        return `${userName}, DO YOU REALLY WANT TO END THE CHAT?`;
+        return `DO YOU REALLY WANT TO END THE CHAT?`;
       case 'ro':
-        return `${userName}, CHIAR VREI SĂ ÎNCHEI CHATUL?`;
+        return `CHIAR VREI SĂ ÎNCHEI CHATUL?`;
       case 'fr':
-        return `${userName}, VOULEZ-VOUS VRAIMENT TERMINER LE CHAT?`;
+        return `VOULEZ-VOUS VRAIMENT TERMINER LE CHAT?`;
       default:
-        return `${userName}, DESEJA MESMO ENCERRAR O CHAT?`;
+        return `DESEJA MESMO ENCERRAR O CHAT?`;
     }
   }
 
