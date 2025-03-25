@@ -1,402 +1,173 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { Injectable } from '@nestjs/common';
-
-export interface ChatMessage {
-  text: string;
-  sender: 'bot' | 'user';
-  status: 'FINESHED' | 'PROGRESS' | 'FINESHED_INTENDED';
-  timestamp: Date;
-  type?: string;
-  buttons?: { label: string; value: string; }[];
-  context?: string; // Propriedade adicionada para identificar o contexto dos botões
-}
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { IChatMessage } from '../webchat-mock/entities/chatMessage.entity'; // Certifique-se de ter definido esse schema
 
 @Injectable()
 export class WebchatMockService {
+  constructor(
+    @InjectModel('ChatMessage') 
+    private readonly chatMessageModel: Model<IChatMessage>
+  ) {}
 
-  // Mensagem de saudação
-  getGreetingMessage(userName: string, lang: string | undefined): ChatMessage {
-    return {
-      text: this.getGreetingMessageLanguage(userName, lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-    };
-  }
-
-  private getGreetingMessageLanguage(userName: string, lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return `¡Hola ${userName}! Soy Estella, la Analista Virtual del Intuitive Service Desk de Positivo S+!`;
-      case 'en':
-        return `Hello ${userName}! I am Estella, the Virtual Analyst of the Positivo S+ Intuitive Service Desk!`;
-      case 'ro':
-        return `Bună ${userName}! Sunt Estella, Analistul Virtual al Service Desk-ului Intuitiv Positivo S+!`;
-      case 'fr':
-        return `Bonjour ${userName}! Je suis Estella, l'Analyste Virtuel du Service Desk Intuitif de Positivo S+!`;
-      default:
-        return `Olá ${userName}! Eu sou a Estella, Analista Virtual do Intuitive Service Desk da Positivo S+!`;
+  /**
+   * Busca no banco a mensagem de saudação e substitui o placeholder pelo nome do usuário.
+   */
+  async getGreetingMessage(userName: string, lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'greeting', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de saudação não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem padrão para usuário não autenticado
-  getDefaultMessage(lang: string | undefined): ChatMessage {
-    return {
-      text: this.getDefaultMessageLanguage(lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-    };
-  }
-
-  private getDefaultMessageLanguage(lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return "¡Hola, buenas tardes! Soy Estella, la Analista Virtual del Intuitive Service Desk de Positivo S+! Estoy aquí para aclarar dudas y brindar soporte técnico. Por favor, haz clic en el siguiente enlace para autenticarte: <a id='posiflow_auth_link' href='#' target='_blank'>https://www.exemplo.com/login</a>. Si deseas restablecer tu contraseña, escribe #reset, para desbloqueo.";
-      case 'en':
-        return "Hello, good afternoon! I am Estella, the Virtual Analyst of the Positivo S+ Intuitive Service Desk! I am here to answer questions and provide technical support. Please click the link below to authenticate: <a id='posiflow_auth_link' href='#' target='_blank'>https://www.exemplo.com/login</a>. If you need a password reset, type #reset for unlock.";
-      case 'ro':
-        return "Bună, după-amiaza bună! Sunt Estella, Analistul Virtual al Service Desk-ului Intuitiv Positivo S+! Sunt aici pentru a clarifica întrebări și a oferi suport tehnic. Te rog să faci clic pe linkul de mai jos pentru autentificare: <a id='posiflow_auth_link' href='#' target='_blank'>https://www.exemplo.com/login</a>. Dacă dorești resetarea parolei, tastează #reset pentru deblocare.";
-      case 'fr':
-        return "Bonjour, bon après-midi! Je suis Estella, l'Analyste Virtuel du Service Desk Intuitif de Positivo S+! Je suis là pour répondre à vos questions et fournir un support technique. Veuillez cliquer sur le lien ci-dessous pour vous authentifier: <a id='posiflow_auth_link' href='#' target='_blank'>https://www.exemplo.com/login</a>. Si vous souhaitez réinitialiser votre mot de passe, tapez #reset pour déverrouiller.";
-      default:
-        return "Olá, Boa tarde! Eu sou a Estella, Analista Virtual do Intuitive Service Desk da Positivo S+! Estou aqui para esclarecer dúvidas e prestar suporte técnico. Por favor, clique no link abaixo para se autenticar: <a id='posiflow_auth_link' href='#' target='_blank'>https://www.exemplo.com/login</a>. Caso deseje reset de senha, digite #reset, para desbloqueio.";
+  /**
+   * Busca a mensagem padrão para usuário não autenticado.
+   */
+  async getDefaultMessage(lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'default', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem padrão não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem de boas-vindas com escolha de idioma
-  getWelcomeMessage(lang: string | undefined): ChatMessage {
-    return {
-      text: this.getWelcomeMessageLanguages(),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-      type: 'buttons',
-      buttons: this.getLanguageButtons(),
-      context: 'language' // Define o contexto dos botões como "language"
-    };
-  }
-
-  private getWelcomeMessageLanguages(): string {
-    return (
-      "🇧🇷 Olá, escolha o idioma para conversar:\n\n" +
-      "🇪🇸 Hola, elige el idioma para conversar:\n\n" +
-      "🇺🇸 Hello, choose the language to chat:\n\n" +
-      "🇷🇴 Bună, alege limba pentru conversație:\n\n" +
-      "🇫🇷 Bonjour, choisissez la langue pour discuter:"
-    );
-  }
-  
-  private getLanguageButtons(): { label: string; value: string; }[] {
-    return [
-      { label: this.getButtonLabel('Portuguese'), value: 'pt' },
-      { label: this.getButtonLabel('Spanish'), value: 'es' },
-      { label: this.getButtonLabel('English'), value: 'en' },
-      { label: this.getButtonLabel('Romanian'), value: 'ro' },
-      { label: this.getButtonLabel('French'), value: 'fr' },
-    ];
-  }
-  
-  private getButtonLabel(base: string): string {
-    const labels = {
-      Portuguese: 'Português',
-      Spanish: 'Español',
-      English: 'English',
-      Romanian: 'Română',
-      French: 'Français',
-    };
-    return labels[base];
-  }
-
-  // Método para solicitar autenticação
-  getAuthPromptMessage(lang: string | undefined): ChatMessage {
-    let text: string;
-    let buttonLabel: string;
-    switch(lang) {
-      case 'es':
-        text = "Por favor, autentícate para continuar.";
-        buttonLabel = "Autenticar";
-        break;
-      case 'en':
-        text = "Please authenticate to continue.";
-        buttonLabel = "Authenticate";
-        break;
-      case 'ro':
-        text = "Te rog autentifică-te pentru a continua.";
-        buttonLabel = "Autentificare";
-        break;
-      case 'fr':
-        text = "Veuillez vous authentifier pour continuer.";
-        buttonLabel = "S'authentifier";
-        break;
-      default:
-        text = "Por favor, autentique-se para continuar.";
-        buttonLabel = "Autenticar";
+  /**
+   * Busca a mensagem de boas-vindas, que pode incluir botões para escolha de idioma.
+   */
+  async getWelcomeMessage(lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'welcome' });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de boas-vindas não encontrado');
     }
-    return {
-      text,
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-      type: 'buttons',
-      buttons: [{ label: buttonLabel, value: 'auth' }],
-      context: 'auth' // Define o contexto dos botões como "auth"
-    };
+    const message = messageTemplate.toObject();
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem com escolha do assunto
-  getInitialSubjectMessage(userName: string, lang: string | undefined): ChatMessage {
-    return {
-      text: this.getInitialSubjectMessageLanguage(userName, lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-      type: 'buttons',
-      buttons: this.getSubjectButtons(userName, lang),
-      context: 'subject' // Define o contexto dos botões como "subject"
-    };
-  }
-
-  private getInitialSubjectMessageLanguage(userName: string, lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return `${userName}, ¿sobre qué tema deseas conversar?`;
-      case 'en':
-        return `${userName}, what topic would you like to discuss?`;
-      case 'ro':
-        return `${userName}, despre ce subiect dorești să discuți?`;
-      case 'fr':
-        return `${userName}, sur quel sujet souhaitez-vous discuter?`;
-      default:
-        return `${userName}, sobre qual assunto você deseja tratar?`;
+  /**
+   * Busca a mensagem de solicitação de autenticação.
+   */
+  async getAuthPromptMessage(lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'auth', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de autenticação não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.timestamp = new Date();
+    return message;
   }
 
-  private getSubjectButtons(userName: string, lang: string | undefined): { label: string; value: string; }[] {
-    return [
-      { label: this.getSubjectLabel('Human Support', lang), value: '1' },
-      { label: this.getSubjectLabel('Document Analysis', lang), value: '2' },
-      { label: this.getSubjectLabel('Ticket Inquiry', lang), value: '3' },
-    ];
-  }
-
-  private getSubjectLabel(base: string, lang: string | undefined): string {
-    const labels = {
-      'Human Support': {
-        pt: 'Atendimento Humano',
-        es: 'Atención Humana',
-        en: 'Human Support',
-        ro: 'Suport Uman',
-        fr: 'Support Humain'
-      },
-      'Document Analysis': {
-        pt: 'Análise de Documentos',
-        es: 'Análisis de Documentos',
-        en: 'Document Analysis',
-        ro: 'Analiza Documentelor',
-        fr: 'Analyse de Documents'
-      },
-      'Ticket Inquiry': {
-        pt: 'Consulta de Chamados',
-        es: 'Consulta de Tickets',
-        en: 'Ticket Inquiry',
-        ro: 'Interogare de Tichete',
-        fr: 'Consultation de Tickets'
-      },
-    };
-    return labels[base][lang] || labels[base].pt;
-  }
-
-  getHumanSupportMessage(lang: string | undefined): ChatMessage {
-    return {
-      text: this.getHumanSupportMessageLanguage(lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-    };
-  }
-
-  private getHumanSupportMessageLanguage(lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return "¡Hola! Espera un momento. Pronto serás atendido. Eres el primero en la fila de atención. Tiempo de espera estimado: 00h01m54s.";
-      case 'en':
-        return "Hello! Please wait a moment. You will be attended shortly. You are first in line. Estimated wait time: 00h01m54s.";
-      case 'ro':
-        return "Bună! Așteaptă un moment. Vei fi deservit în curând. Ești primul în coadă. Timpul estimat de așteptare: 00h01m54s.";
-      case 'fr':
-        return "Bonjour! Veuillez patienter un instant. Vous serez servi sous peu. Vous êtes le premier de la file d'attente. Temps d'attente estimé: 00h01m54s.";
-      default:
-        return "Olá! Aguarde um momento. Em breve você será atendido. Você é o 1º na fila de atendimento. Tempo médio de espera: 00h01m54s.";
+  /**
+   * Busca a mensagem com escolha do assunto e substitui o placeholder do nome.
+   */
+  async getInitialSubjectMessage(userName: string, lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'subject', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de assunto não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem para análise de documentos
-  getDocumentAnalysisMessage(userName: string, lang: string | undefined): ChatMessage {
-    return {
-      text: this.getDocumentAnalysisMessageLanguage(userName, lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-    };
-  }
-
-  private getDocumentAnalysisMessageLanguage(userName: string, lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return `${userName}, puedes enviar un documento de hasta 5MB para que pueda ayudarte con información específica sobre él.\nConsejo: Asegúrate de que tu documento esté en uno de los formatos soportados (PDF, DOCX, XLSX, PPTX, TXT) antes de enviarlo.`;
-      case 'en':
-        return `${userName}, you can send a document up to 5MB so I can help with specific information about it.\nTip: Ensure your document is in one of the supported formats (PDF, DOCX, XLSX, PPTX, TXT) before sending.`;
-      case 'ro':
-        return `${userName}, poți trimite un document de maximum 5MB pentru a te ajuta cu informații specifice despre acesta.\nSfat: Asigură-te că documentul tău este într-unul din formatele acceptate (PDF, DOCX, XLSX, PPTX, TXT) înainte de a-l trimite.`;
-      case 'fr':
-        return `${userName}, vous pouvez envoyer un document d'au maximum 5 Mo afin que je puisse vous aider avec des informations spécifiques le concernant.\nConseil : Assurez-vous que votre document soit dans l'un des formats supportés (PDF, DOCX, XLSX, PPTX, TXT) avant de l'envoyer.`;
-      default:
-        return `${userName}, você pode enviar um documento com no máximo 5MB para que eu possa ajudar com informações específicas sobre ele.\nDica: Certifique-se de que seu documento esteja em um dos formatos suportados (PDF, DOCX, XLSX, PPTX, TXT) antes de enviá-lo.`;
+  /**
+   * Busca a mensagem para atendimento humano.
+   */
+  async getHumanSupportMessage(lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'human_support', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de atendimento humano não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem para consulta de chamados
-  getTicketInquiryMessage(userName: string, lang: string | undefined): ChatMessage {
-    return {
-      text: this.getTicketInquiryMessageLanguage(userName, lang),
-      sender: 'bot',
-      status: 'PROGRESS',
-      timestamp: new Date(),
-    };
-  }
-
-  private getTicketInquiryMessageLanguage(userName: string, lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return `${userName}, no tienes tickets abiertos en este momento. Te ayudo en algo más?`;
-      case 'en':
-        return `${userName}, you do not have any open tickets at the moment. Can I help you with something else?`;
-      case 'ro':
-        return `${userName}, nu ai niciun tichet deschis în moment. Pot să te ajut cu altceva?`;
-      case 'fr':
-        return `${userName}, vous n'avez aucun ticket ouvert pour le moment. Puis-je vous aider d'une autre manière ?`;
-      default:
-        return `${userName}, você não possui chamados em aberto no momento. Te ajudo em algo mais?`;
+  /**
+   * Busca a mensagem para análise de documentos e substitui o placeholder do nome do usuário.
+   */
+  async getDocumentAnalysisMessage(userName: string, lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'document_analysis', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de análise de documentos não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  // Mensagem de confirmação para encerramento do chat
-  getFinishIntendMessage(userName: string, lang: string | undefined): ChatMessage {
-    return {
-      text: this.getFinishIntendMessageLanguage(userName, lang),
-      sender: 'bot',
-      status: 'FINESHED_INTENDED',
-      timestamp: new Date(),
-      type: 'buttons',
-      buttons: this.getFinishIntendButtons(lang),
-      context: 'finish' // Define o contexto dos botões como "finish"
-    };
-  }
-
-  private getFinishIntendMessageLanguage(userName: string, lang: string | undefined): string {
-    switch(lang) {
-      case 'es':
-        return `¿REALMENTE DESEAS TERMINAR EL CHAT?`;
-      case 'en':
-        return `DO YOU REALLY WANT TO END THE CHAT?`;
-      case 'ro':
-        return `CHIAR VREI SĂ ÎNCHEI CHATUL?`;
-      case 'fr':
-        return `VOULEZ-VOUS VRAIMENT TERMINER LE CHAT?`;
-      default:
-        return `DESEJA MESMO ENCERRAR O CHAT?`;
+  /**
+   * Busca a mensagem para consulta de chamados e substitui o placeholder do nome.
+   */
+  async getTicketInquiryMessage(userName: string, lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'ticket_inquiry', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de consulta de chamados não encontrado');
     }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  private getFinishIntendButtons(lang: string | undefined): { label: string; value: string; }[] {
-    return [
-      { label: this.getFinishButtonLabel('Yes', lang), value: '1' },
-      { label: this.getFinishButtonLabel('No', lang), value: '2' },
-    ];
+  /**
+   * Busca a mensagem de confirmação de encerramento do chat e substitui o placeholder, se necessário.
+   */
+  async getFinishIntendMessage(userName: string, lang: string | undefined): Promise<IChatMessage> {
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'finish_intend', lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de encerramento não encontrado');
+    }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  private getFinishButtonLabel(base: string, lang: string | undefined): string {
-    const labels = {
-      'Yes': {
-        pt: 'SIM',
-        es: 'SÍ',
-        en: 'YES',
-        ro: 'DA',
-        fr: 'OUI'
-      },
-      'No': {
-        pt: 'NÃO',
-        es: 'NO',
-        en: 'NO',
-        ro: 'NU',
-        fr: 'NON'
-      }
-    };
-    return labels[base][lang] || labels[base].pt;
-  }
-
-  // Mensagem de confirmação após escolha de encerramento
-  getFinishConfirmationMessage(option: string, userName: string, lang: string | undefined): ChatMessage | null {
+  /**
+   * Busca a mensagem de confirmação após a escolha de encerramento.
+   * Se o usuário optar por encerrar (option === '1'), busca o template de encerramento;
+   * caso contrário, busca o template para continuar a conversa.
+   */
+  async getFinishConfirmationMessage(option: string, userName: string, lang: string | undefined): Promise<IChatMessage> {
+    let category = '';
     if (option === '1') {
-      return {
-        text: this.getFinishConfirmationMessageLanguage(option, userName, lang),
-        sender: 'bot',
-        status: 'FINESHED',
-        timestamp: new Date(),
-      };
+      category = 'finish_confirmation_yes';
     } else if (option === '2') {
-      return {
-        text: this.getFinishConfirmationMessageLanguage(option, userName, lang),
-        sender: 'bot',
-        status: 'PROGRESS',
-        timestamp: new Date(),
-      };
+      category = 'finish_confirmation_no';
+    } else {
+      throw new NotFoundException('Opção de confirmação inválida');
     }
-    return null;
+    const messageTemplate = await this.chatMessageModel.findOne({ category, lang });
+    if (!messageTemplate) {
+      throw new NotFoundException('Template de mensagem de confirmação não encontrado');
+    }
+    const message = messageTemplate.toObject();
+    message.text = message.text.replace('{{userName}}', userName);
+    message.timestamp = new Date();
+    return message;
   }
 
-  private getFinishConfirmationMessageLanguage(option: string, userName: string, lang: string | undefined): string {
-    if (option === '1') {
-      switch(lang) {
-        case 'es':
-          return "Gracias por tu atención. Para finalizar, por favor, completa nuestra encuesta de satisfacción: https://www.exemplo.com/satisfacao";
-        case 'en':
-          return "Thank you for your service. To finish, please fill out our satisfaction survey: https://www.exemplo.com/satisfacao";
-        case 'ro':
-          return "Mulțumim pentru asistență. Pentru a finaliza, te rugăm să completezi sondajul nostru de satisfacție: https://www.exemplo.com/satisfacao";
-        case 'fr':
-          return "Merci pour votre service. Pour terminer, veuillez remplir notre enquête de satisfaction : https://www.exemplo.com/satisfacao";
-        default:
-          return "Obrigado pelo seu atendimento. Para finalizar, por favor, preencha nossa pesquisa de satisfação: https://www.exemplo.com/satisfacao";
-      }
-    } else { 
-      switch(lang) {
-        case 'es':
-          return `${userName}, ¿sobre qué tema deseas conversar?\n1 - Atención Humana\n2 - Análisis de Documentos\n3 - Consulta de Tickets`;
-        case 'en':
-          return `${userName}, what topic would you like to discuss?\n1 - Human Support\n2 - Document Analysis\n3 - Ticket Inquiry`;
-        case 'ro':
-          return `${userName}, despre ce subiect dorești să discuți?\n1 - Suport Uman\n2 - Analiza Documentelor\n3 - Interogare de Tichete`;
-        case 'fr':
-          return `${userName}, sur quel sujet souhaitez-vous discuter?\n1 - Support Humain\n2 - Analyse de Documents\n3 - Consultation de Tickets`;
-        default:
-          return `${userName}, sobre qual assunto você deseja tratar?\n1 - Atendimento Humano\n2 - Análise de Documentos\n3 - Consulta de Chamados`;
-      }
+  /**
+   * Retorna uma resposta automática. Se não houver template definido para o idioma, utiliza um fallback.
+   */
+  async getAutomaticResponse(lang?: string): Promise<string> {
+    const language = lang || 'pt';
+    const messageTemplate = await this.chatMessageModel.findOne({ category: 'automatic_response', lang: language });
+    if (!messageTemplate) {
+      return 'Olá! Isso é uma resposta automática.';
     }
-  }
-
-  getAutomaticResponse(lang?: string): string {
-    const messages: Record<string, string> = {
-      pt: "Olá! Isso é uma resposta automática.",
-      en: "Hello! This is an automatic response.",
-      es: "¡Hola! Esta es una respuesta automática.",
-      fr: "Bonjour! Ceci est une réponse automatique.",
-      ro: "Bună! Acesta este un răspuns automat."
-    };
-  
-    return messages[lang ?? "pt"] ?? messages.pt;
+    return messageTemplate.text;
   }
 }
