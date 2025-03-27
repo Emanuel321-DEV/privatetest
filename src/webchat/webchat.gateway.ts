@@ -26,7 +26,7 @@ interface ClientInfo {
   state: ChatState;
 }
 
-@WebSocketGateway({ cors: { origin: '*', credentials: true } })
+@WebSocketGateway({ cors: true } )
 export class WebchatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(WebchatGateway.name);
