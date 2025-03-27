@@ -14,9 +14,8 @@ import { ChatMessageSchema } from './webchat-mock/entities/chatMessage.entity';
       isGlobal: true,
     }),
     CompanyModule,
-    MongooseModule.forRoot(process.env.MONGODB_URI || ''),
+    MongooseModule.forRoot('mongodb+srv://emanuelhvd:91fefbe2-e0ff-4c95-bb1d-ae9768a214cf@cluster0.5yq2j.mongodb.net/posiflow?appName=Cluster0'),
     MongooseModule.forFeature([{ name: 'ChatMessage', schema: ChatMessageSchema }]),
-
   ],
   controllers: [AppController],
   providers: [AppService, WebchatGateway, WebchatMockService ],
